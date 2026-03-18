@@ -136,11 +136,21 @@ func processInstall(
     catalogList: [String],
     installInfo: inout PlistDict,
     isManagedUpdate: Bool = false,
-    isOptionalInstall: Bool = false
+    isOptionalInstall: Bool = false,
+    forceReinstall: Bool = false
 ) async -> Bool {
-    /// helper function
+    /// helper function: append item to managed_installs
     func appendToProcessedManagedInstalls(_ item: PlistDict) {
         var managedInstalls = installInfo["managed_installs"] as? [PlistDict] ?? []
+        managedInstalls.append(item)
+        installInfo["managed_installs"] = managedInstalls
+    }
+
+    /// helper function: replace any existing entry with same name, then append
+    func replaceInProcessedManagedInstalls(_ item: PlistDict) {
+        var managedInstalls = installInfo["managed_installs"] as? [PlistDict] ?? []
+        let itemName = item["name"] as? String ?? ""
+        managedInstalls = managedInstalls.filter { ($0["name"] as? String ?? "") != itemName }
         managedInstalls.append(item)
         installInfo["managed_installs"] = managedInstalls
     }
@@ -150,11 +160,13 @@ func processInstall(
     let (manifestItemNameWithoutVersion, includedVersion) = nameAndVersion(manifestItemName, onlySplitOnHyphens: true)
 
     // have we processed this already?
-    if let processedInstalls = installInfo["processed_installs"] as? [String],
-       processedInstalls.contains(manifestItemName) || processedInstalls.contains(manifestItemNameWithoutVersion)
-    {
-        display.debug1("\(manifestItemNameWithoutVersion) has already been processed for install.")
-        return true
+    if !forceReinstall {
+        if let processedInstalls = installInfo["processed_installs"] as? [String],
+           processedInstalls.contains(manifestItemName) || processedInstalls.contains(manifestItemNameWithoutVersion)
+        {
+            display.debug1("\(manifestItemNameWithoutVersion) has already been processed for install.")
+            return true
+        }
     }
     if let processedUninstalls = installInfo["processed_uninstalls"] as? [String],
        processedUninstalls.contains(manifestItemNameWithoutVersion)
@@ -168,7 +180,8 @@ func processInstall(
         return false
     }
 
-    if let managedInstalls = installInfo["managed_installs"] as? [PlistDict],
+    if !forceReinstall,
+       let managedInstalls = installInfo["managed_installs"] as? [PlistDict],
        let itemName = pkginfo["name"] as? String,
        let itemVersion = pkginfo["version"] as? String,
        itemInInstallInfo(pkginfo, theList: managedInstalls, version: itemVersion)
@@ -237,7 +250,8 @@ func processInstall(
             catalogList: catalogList,
             installInfo: &installInfo,
             isManagedUpdate: isManagedUpdate,
-            isOptionalInstall: isOptionalInstall
+            isOptionalInstall: isOptionalInstall,
+            forceReinstall: false
         )
         if !success {
             dependenciesMet = false
@@ -254,7 +268,7 @@ func processInstall(
     processedItem["icon_name"] = pkginfo["icon_name"]
 
     let installedState = await installedState(pkginfo)
-    if installedState == .thisVersionNotInstalled {
+    if installedState == .thisVersionNotInstalled || forceReinstall {
         if !dependenciesMet {
             // we should not attempt to install
             display.warning("Didn't attempt to install \(manifestItemName) because could not resolve all dependencies.")
@@ -268,6 +282,9 @@ func processInstall(
 
         display.detail("Need to install \(manifestItemName)")
         processedItem["installed"] = false
+        if forceReinstall {
+            processedItem["force_reinstall"] = true
+        }
         processedItem["version_to_install"] = version
         let installerItemSize = pkginfo["installer_item_size"] as? Int ?? 0
         processedItem["installer_item_size"] = installerItemSize
@@ -406,7 +423,11 @@ func processInstall(
             }
         }
 
-        appendToProcessedManagedInstalls(processedItem)
+        if forceReinstall {
+            replaceInProcessedManagedInstalls(processedItem)
+        } else {
+            appendToProcessedManagedInstalls(processedItem)
+        }
 
         // now look for update_for items
         var updateList = [String]()
@@ -509,14 +530,15 @@ func processInstall(
                 catalogList: catalogList,
                 installInfo: &installInfo,
                 isManagedUpdate: isManagedUpdate,
-                isOptionalInstall: isOptionalInstall
+                isOptionalInstall: isOptionalInstall,
+                forceReinstall: false
             )
         }
     }
     // done successfully processing this install; add it to our list
     // of processed installs so we don't process it again in the future
-    // (unless it is a managed_update)
-    if !isManagedUpdate {
+    // (unless it is a managed_update or a force reinstall)
+    if !isManagedUpdate && !forceReinstall {
         display.debug2("Adding \(manifestItemName) to the list of processed installs")
         var processedInstalls = installInfo["processed_installs"] as? [String] ?? []
         processedInstalls.append(manifestItemNameWithoutVersion)
@@ -556,7 +578,9 @@ func processManagedUpdate(
             manifestItemName,
             catalogList: catalogList,
             installInfo: &installInfo,
-            isManagedUpdate: true
+            isManagedUpdate: true,
+            isOptionalInstall: false,
+            forceReinstall: false
         )
     } else {
         display.debug1("\(manifestItemName) does not appear to be installed, so no managed updates.")
@@ -758,6 +782,7 @@ func processOptionalInstall(
         "minimum_os_version",
         "update_available",
         "localized_strings",
+        "allow_solo_install",
     ]
     for key in optionalKeys {
         processedItem[key] = pkginfo[key]

@@ -106,6 +106,33 @@ func processDefaultInstalls(_ defaultItems: [String]) {
     }
 }
 
+/// Adds an item to SelfServeManifest's managed_reinstalls list so the next
+/// updatecheck will force-download and reinstall it even if already installed.
+func addToSelfServeManagedReinstalls(_ itemName: String) {
+    let manifestPath = selfServiceManifestPath()
+    var manifest: PlistDict
+    if pathExists(manifestPath) {
+        do {
+            manifest = try readPlist(fromFile: manifestPath) as? PlistDict ?? PlistDict()
+        } catch {
+            display.error("Could not read \(manifestPath): \(error.localizedDescription)")
+            return
+        }
+    } else {
+        manifest = PlistDict()
+    }
+    var reinstalls = manifest["managed_reinstalls"] as? [String] ?? []
+    if !reinstalls.contains(itemName) {
+        reinstalls.append(itemName)
+        manifest["managed_reinstalls"] = reinstalls
+        do {
+            try writePlist(manifest, toFile: manifestPath)
+        } catch {
+            display.error("Could not write \(manifestPath): \(error.localizedDescription)")
+        }
+    }
+}
+
 /// Removes any already-removed items from the SelfServeManifest's
 /// managed_uninstalls (So the user can later install them again if they wish)
 func cleanUpSelfServeManagedUninstalls(_ installInfoRemovals: [PlistDict]) {

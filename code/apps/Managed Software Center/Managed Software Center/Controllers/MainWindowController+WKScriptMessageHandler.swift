@@ -27,6 +27,11 @@ extension MainWindowController: WKScriptMessageHandler {
                 actionButtonClicked(item_name)
             }
         }
+        if message.name == "reinstallButtonClicked" {
+            if let item_name = message.body as? String {
+                reinstallButtonClicked(item_name)
+            }
+        }
         if message.name == "changeSelectedCategory" {
             if let category_name = message.body as? String {
                 changeSelectedCategory(category_name)
@@ -195,6 +200,39 @@ extension MainWindowController: WKScriptMessageHandler {
         }
     }
     
+    func reinstallButtonClicked(_ item_name: String) {
+        // Called when user clicks the Reinstall button in My Items
+        if _update_in_progress {
+            return
+        }
+        kickOffReinstallSession(itemName: item_name)
+    }
+
+    func kickOffReinstallSession(itemName: String) {
+        // Request a forced reinstall: write to managed_reinstalls in SelfServeManifest,
+        // trigger an updatecheck to download the item, then solo-install it.
+        var self_service = SelfService()
+        guard self_service.requestReinstall(itemName) else {
+            msc_debug_log("Could not write to SelfServeManifest for reinstall of \(itemName)")
+            return
+        }
+        _pendingSoloInstallItem = itemName
+        _alertedUserToOutstandingUpdates = false
+        _update_in_progress = true
+        displayUpdateCount()
+        do {
+            try startUpdateCheck(true)
+        } catch {
+            msc_debug_log("Error starting reinstall check session: \(error)")
+            munkiStatusSessionEnded(withStatus: -2, errorMessage: "\(error)")
+            return
+        }
+        managedsoftwareupdate_task = "checktheninstall"
+        if let status_controller = (NSApp.delegate as? AppDelegate)?.statusController {
+            status_controller.startMunkiStatusSession()
+        }
+    }
+
     func actionButtonClicked(_ item_name: String) {
         // this method is called from JavaScript when the user clicks
         // the Install/Remove/Cancel button in the list or detail view

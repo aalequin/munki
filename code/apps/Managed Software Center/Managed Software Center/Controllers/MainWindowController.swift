@@ -33,6 +33,8 @@ class MainWindowController: NSWindowController {
     var stop_requested = false
     var user_warned_about_extra_updates = false
     var forceFrontmost = false
+    // When non-nil, the next install session will be a solo install for this item name
+    var _pendingSoloInstallItem: String? = nil
     
     // Cocoa UI binding properties
     @IBOutlet weak var sidebarViewController: SidebarViewController!
@@ -677,6 +679,7 @@ class MainWindowController: NSWindowController {
         wkContentController.add(self, name: "installButtonClicked")
         wkContentController.add(self, name: "myItemsButtonClicked")
         wkContentController.add(self, name: "actionButtonClicked")
+        wkContentController.add(self, name: "reinstallButtonClicked")
         wkContentController.add(self, name: "changeSelectedCategory")
         wkContentController.add(self, name: "updateOptionalInstallButtonClicked")
         wkContentController.add(self, name: "updateOptionalInstallButtonFinishAction")
@@ -921,6 +924,56 @@ class MainWindowController: NSWindowController {
         }
     }
     
+    // MARK: - Solo Install Support
+
+    func canSoloInstall(_ item_name: String) -> Bool {
+        // Returns true if the named item may be solo-installed.
+        // Requires AllowSoloInstall preference to be true.
+        // Then either AllowSoloInstallForAllManifestItems must be true,
+        // or the item's pkginfo must have allow_solo_install = true.
+        guard pythonishBool(pref("AllowSoloInstall")) else { return false }
+        if pythonishBool(pref("AllowSoloInstallForAllManifestItems")) { return true }
+        if let item = optionalItem(forName: item_name) {
+            return item["allow_solo_install"] as? Bool ?? false
+        }
+        return false
+    }
+
+    func kickOffSoloInstallSession(itemName: String) {
+        // Start a solo install session for only the named item.
+        managedsoftwareupdate_task = ""
+        msc_log("user", "solo_install_without_logout", msg: itemName)
+        _update_in_progress = true
+        displayUpdateCount()
+        if let status_controller = (NSApp.delegate as? AppDelegate)?.statusController {
+            status_controller._status_message = NSLocalizedString(
+                "Installing...", comment: "Installing message")
+        }
+        do {
+            try soloJustUpdate(itemName: itemName)
+        } catch {
+            msc_debug_log("Error starting solo install session: \(error)")
+            munkiStatusSessionEnded(withStatus: -2, errorMessage: "\(error)")
+            return
+        }
+        managedsoftwareupdate_task = "installwithnologout"
+        if let status_controller = (NSApp.delegate as? AppDelegate)?.statusController {
+            status_controller.startMunkiStatusSession()
+        }
+        markSoloItemAsInstalling(itemName)
+    }
+
+    func markSoloItemAsInstalling(_ item_name: String) {
+        // Mark only the named item as installing in the UI
+        for item in getOptionalInstallItems() {
+            if let name = item["name"] as? String, name == item_name {
+                item["status"] = "installing"
+                updateDOMforOptionalItem(item)
+                break
+            }
+        }
+    }
+
     func markPendingItemsAsInstalling() {
         // While an install/removal session is happening, mark optional items
         // that are being installed/removed with the appropriate status
@@ -1010,9 +1063,9 @@ class MainWindowController: NSWindowController {
                 status_controller.startMunkiStatusSession()
             }
             markRequestedItemsAsProcessing()
-        } else if !_alertedUserToOutstandingUpdates && updatesContainNonUserSelectedItems() {
+        } else if !_alertedUserToOutstandingUpdates && updatesContainNonUserSelectedItems() && _pendingSoloInstallItem == nil {
             // current list of updates contains some not explicitly chosen by
-            // the user
+            // the user (only show this alert when NOT doing a solo install)
             msc_debug_log("updateCheck not needed, items require user approval")
             _update_in_progress = false
             displayUpdateCount()
@@ -1024,7 +1077,12 @@ class MainWindowController: NSWindowController {
             _status_title = NSLocalizedString(
                 "Update in progress.",
                 comment: "Update In Progress primary text") + ".."
-            kickOffInstallSession()
+            if let soloItemName = _pendingSoloInstallItem {
+                _pendingSoloInstallItem = nil
+                kickOffSoloInstallSession(itemName: soloItemName)
+            } else {
+                kickOffInstallSession()
+            }
             _obnoxiousNotificationMode = false
             makeUsUnobnoxious()
         }
@@ -1323,7 +1381,15 @@ class MainWindowController: NSWindowController {
             displayUpdateCount()
             updateDOMforOptionalItem(item)
             
-            if ["install-requested", "removal-requested"].contains(current_status) {
+            if current_status == "install-requested" {
+                _alertedUserToOutstandingUpdates = false
+                if !_update_in_progress {
+                    if canSoloInstall(item_name) {
+                        _pendingSoloInstallItem = item_name
+                    }
+                    updateNow()
+                }
+            } else if current_status == "removal-requested" {
                 _alertedUserToOutstandingUpdates = false
                 if !_update_in_progress {
                     updateNow()

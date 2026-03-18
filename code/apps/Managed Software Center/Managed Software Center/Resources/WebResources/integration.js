@@ -94,3 +94,29 @@ function enableStopButton() {
         install_btn.classList.remove("disabled");
     }
 }
+
+function closeSplitMenus() {
+    var menus = document.querySelectorAll('.split-menu.open');
+    menus.forEach(function(m) { m.classList.remove('open'); });
+}
+
+function toggleSplitMenu(menuId, btn) {
+    var menu = document.getElementById(menuId);
+    if (!menu) { return; }
+    var isOpen = menu.classList.contains('open');
+    closeSplitMenus();
+    if (!isOpen) {
+        // Position via fixed coords so the menu escapes overflow:hidden ancestors
+        var splitBtn = btn.parentElement; // .msc-split-button div
+        var rect = splitBtn.getBoundingClientRect();
+        menu.style.top = (rect.bottom + 4) + 'px';
+        menu.style.right = (window.innerWidth - rect.right) + 'px';
+        menu.classList.add('open');
+    }
+}
+
+document.addEventListener('click', function(e) {
+    if (!e.target.classList.contains('split-arrow')) {
+        closeSplitMenus();
+    }
+});

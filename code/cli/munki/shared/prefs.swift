@@ -59,6 +59,8 @@ let DEFAULT_PREFS: [String: Any] = [
     // "SoftwareRepoCAPath": None,
     "SoftwareRepoURL": DEFAULT_INSECURE_REPO_URL,
     // "SoftwareUpdateServerURL": None,
+    "AllowSoloInstall": false,
+    "AllowSoloInstallForAllManifestItems": false,
     "SuppressAutoInstall": false,
     "SuppressLoginwindowInstall": false,
     "SuppressStopButtonOnInstall": false,
@@ -74,6 +76,8 @@ let DEFAULT_PREFS: [String: Any] = [
 let CONFIG_KEY_NAMES = [
     "AdditionalHttpHeaders",
     "AggressiveUpdateNotificationDays",
+    "AllowSoloInstall",
+    "AllowSoloInstallForAllManifestItems",
     "AppleSoftwareUpdatesIncludeMajorOSUpdates",
     "AppleSoftwareUpdatesOnly",
     "CatalogURL",

@@ -91,4 +91,8 @@ struct MSUOtherOptions: ParsableArguments {
     @Flag(name: .shortAndLong,
           help: "Quiet mode. Logs messages, but nothing to stdout. --verbose is ignored if --quiet is used.")
     var quiet = false
+
+    @Option(name: .customLong("pkg"),
+            help: "Install only the named package (case-insensitive). Useful for installing a single item without triggering all other pending updates. Can be combined with --installonly.")
+    var pkg: String = ""
 }

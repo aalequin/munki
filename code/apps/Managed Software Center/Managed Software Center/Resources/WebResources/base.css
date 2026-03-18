@@ -1196,3 +1196,77 @@ div.lockup-container div.status-results>p a{
     border-bottom: 1px solid var(--line-color);
     height: 105px;
 }
+
+/* Split button: primary action (Remove) with dropdown arrow for secondary action (Reinstall) */
+.msc-split-button-wrapper {
+    position: relative;
+    display: inline-block;
+}
+
+.msc-split-button {
+    display: inline-flex;
+    height: 24px;
+    background: var(--small-btn-background);
+    border-radius: 12px;
+    overflow: hidden;
+    align-items: stretch;
+}
+
+.msc-split-button button {
+    -webkit-appearance: none;
+    -webkit-font-smoothing: antialiased;
+    -webkit-border-radius: 0;
+    border: 0;
+    background: transparent;
+    margin: 0;
+    padding: 0;
+    cursor: default;
+    color: var(--small-button-text-color-enabled);
+}
+
+.msc-split-button .split-main {
+    font: normal normal bold 10px/24px 'Helvetica';
+    text-transform: uppercase;
+    padding: 0 10px;
+}
+
+.msc-split-button .split-arrow {
+    font-size: 9px;
+    line-height: 24px;
+    padding: 0 7px;
+    border-left: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.msc-split-button button:active:hover {
+    background: rgba(0, 0, 0, 0.08);
+    color: var(--small-button-text-color-active);
+}
+
+.split-menu {
+    display: none;
+    position: fixed; /* fixed escapes overflow:hidden ancestors */
+    background: var(--modal-background-color);
+    border: 0.5px solid var(--border-color);
+    border-radius: 6px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+    z-index: 100;
+    overflow: hidden;
+    min-width: 90px;
+}
+
+.split-menu.open {
+    display: block;
+}
+
+.split-menu-item {
+    font: normal normal bold 10px/14px 'Helvetica';
+    text-transform: uppercase;
+    color: var(--small-button-text-color-enabled);
+    padding: 7px 12px;
+    cursor: default;
+    text-align: center;
+}
+
+.split-menu-item:hover {
+    background: var(--small-btn-background);
+}

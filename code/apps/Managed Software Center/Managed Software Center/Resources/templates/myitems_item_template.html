@@ -22,15 +22,6 @@
                 <div class="spinner-blade"></div>
             </div>
         </li>
-        <li class="button">
-            <div class="msc-button small">
-                <button class="button-area uppercase"
-                        onClick="window.webkit.messageHandlers.actionButtonClicked.postMessage('${name_quoted}');">
-                    <div class="msc-button-inner ${status}" id="${name_escaped}_action_button_text">
-                        ${short_action_text}
-                    </div>
-                </button>
-            </div>
-        </li>
+        ${reinstall_button}
     </ul>
 </div>

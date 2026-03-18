@@ -169,6 +169,7 @@ func writeSelfServiceManifest(_ optional_install_choices: PlistDict) -> Bool {
     var manifest_contents = readSelfServiceManifest()
     manifest_contents["managed_installs"] = (optional_install_choices["managed_installs"] as? [String] ?? [String]())
     manifest_contents["managed_uninstalls"] = (optional_install_choices["managed_uninstalls"] as? [String] ?? [String]())
+    manifest_contents["managed_reinstalls"] = (optional_install_choices["managed_reinstalls"] as? [String] ?? [String]())
     do {
         try writePlist(
             manifest_contents,
@@ -475,6 +476,22 @@ func justUpdate() throws {
      We write specific contents to the file to tell managedsoftwareupdate
      to launch a staged macOS installer if applicable */
     let plist = ["LaunchStagedOSInstaller": updateListContainsStagedOSUpdate()]
+    do {
+        try writePlist(plist, toFile: INSTALLWITHOUTLOGOUTFILE)
+    } catch {
+        msc_log("MSC", "cant_write_file", msg: "Couldn't write \(INSTALLWITHOUTLOGOUTFILE) -- \(error)")
+        throw ProcessStartError.error(
+            description: "Could not create file \(INSTALLWITHOUTLOGOUTFILE)")
+    }
+}
+
+func soloJustUpdate(itemName: String) throws {
+    /* Like justUpdate(), but tells managedsoftwareupdate to install only
+     the named item rather than all pending updates. */
+    let plist: PlistDict = [
+        "LaunchStagedOSInstaller": false,
+        "SoloInstallItemName": itemName
+    ]
     do {
         try writePlist(plist, toFile: INSTALLWITHOUTLOGOUTFILE)
     } catch {

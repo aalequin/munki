@@ -323,6 +323,14 @@ func installWithInstallInfo(
             removeFromSelfServeInstalls(itemName)
         }
 
+        // if install was successful and this is a force reinstall,
+        // remove the item from the SelfServeManifest's managed_reinstalls
+        if retcode == 0,
+           item["force_reinstall"] as? Bool ?? false
+        {
+            removeFromSelfServeReinstalls(itemName)
+        }
+
         // log install success/failure
         var logMessage = "Install of \(displayName)-\(versionToInstall): "
         if retcode == 0 {
@@ -601,13 +609,17 @@ func processRemovals(_ removalList: [PlistDict], onlyUnattended: Bool = false) a
 /// Runs the install/removal session.
 ///
 /// Args:
-/// only_unattended: Boolean. If True, only do unattended_(un)install pkgs.
-func doInstallsAndRemovals(onlyUnattended: Bool = false) async -> PostAction {
+/// onlyUnattended: Boolean. If True, only do unattended_(un)install pkgs.
+/// soloItemName: String. If non-empty, install only the named item (case-insensitive).
+func doInstallsAndRemovals(onlyUnattended: Bool = false, soloItemName: String = "") async -> PostAction {
     var removalsNeedRestart = false
     var installsNeedRestart = false
 
+    let isSoloInstall = !soloItemName.isEmpty
     if onlyUnattended {
         munkiLog("### Beginning unattended installer session ###")
+    } else if isSoloInstall {
+        munkiLog("### Beginning solo installer session for: \(soloItemName) ###")
     } else {
         munkiLog("### Beginning managed installer session ###")
     }
@@ -652,8 +664,20 @@ func doInstallsAndRemovals(onlyUnattended: Bool = false) async -> PostAction {
         // process installs
         if let managedInstalls = installInfo["managed_installs"] as? [PlistDict] {
             // filter list to items that need to be installed
-            let installList = managedInstalls.filter {
+            let pendingInstalls = managedInstalls.filter {
                 !($0["installed"] as? Bool ?? false)
+            }
+            // for solo install, further filter to only the named item (case-insensitive)
+            let installList: [PlistDict]
+            if isSoloInstall {
+                installList = pendingInstalls.filter {
+                    ($0["name"] as? String ?? "").lowercased() == soloItemName.lowercased()
+                }
+                if installList.isEmpty {
+                    munkiLog("Solo install item '\(soloItemName)' not found in pending installs.")
+                }
+            } else {
+                installList = pendingInstalls
             }
             Report.shared.record(installList, to: "ItemsToInstall")
             if !installList.isEmpty {
@@ -668,8 +692,22 @@ func doInstallsAndRemovals(onlyUnattended: Bool = false) async -> PostAction {
                 (installsNeedRestart, skippedInstalls) = await installWithInstallInfo(
                     installList: installList, onlyUnattended: onlyUnattended
                 )
-                // if any installs were skipped record them for later
-                updatedInstallInfo["managed_installs"] = skippedInstalls
+                if isSoloInstall {
+                    // For solo install: preserve all non-solo items in managed_installs;
+                    // only remove the solo item if it was successfully installed.
+                    let soloNameLower = soloItemName.lowercased()
+                    // Keep items that are not the solo item, plus any skipped solo items
+                    let preservedItems = managedInstalls.filter {
+                        ($0["name"] as? String ?? "").lowercased() != soloNameLower
+                    }
+                    let failedSoloItems = skippedInstalls.filter {
+                        ($0["name"] as? String ?? "").lowercased() == soloNameLower
+                    }
+                    updatedInstallInfo["managed_installs"] = preservedItems + failedSoloItems
+                } else {
+                    // if any installs were skipped record them for later
+                    updatedInstallInfo["managed_installs"] = skippedInstalls
+                }
             }
         }
         // update optional_installs with new installation/removal status

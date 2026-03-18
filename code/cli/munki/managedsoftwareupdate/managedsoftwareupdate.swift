@@ -44,6 +44,8 @@ struct ManagedSoftwareUpdate: AsyncParsableCommand {
 
     // runtype is used for pre and postflight scripts
     var runtype = "custom"
+    // soloInstallItemName: when non-empty, only this item is installed (case-insensitive)
+    var soloInstallItemName = ""
     var munkiUpdateCount = 0
     var appleUpdateCount = 0
     var restartAction: PostAction = .none
@@ -188,10 +190,14 @@ struct ManagedSoftwareUpdate: AsyncParsableCommand {
             let launchdtriggerfile = "/private/tmp/.com.googlecode.munki.managedinstall.launchd"
             if pathExists(launchdtriggerfile) {
                 munkiLog("managedsoftwareupdate run triggered by \(launchdtriggerfile)")
-                if let launchOptions = (try? readPlist(fromFile: launchdtriggerfile)) as? PlistDict,
-                   let launchOSInstaller = launchOptions["LaunchStagedOSInstaller"] as? Bool
-                {
-                    otherOptions.launchosinstaller = launchOSInstaller
+                if let launchOptions = (try? readPlist(fromFile: launchdtriggerfile)) as? PlistDict {
+                    if let launchOSInstaller = launchOptions["LaunchStagedOSInstaller"] as? Bool {
+                        otherOptions.launchosinstaller = launchOSInstaller
+                    }
+                    if let soloName = launchOptions["SoloInstallItemName"] as? String, !soloName.isEmpty {
+                        soloInstallItemName = soloName
+                        munkiLog("Solo install requested for item: \(soloName)")
+                    }
                 }
                 // remove it so we aren't automatically relaunched
                 try? FileManager.default.removeItem(atPath: launchdtriggerfile)
@@ -361,7 +367,7 @@ struct ManagedSoftwareUpdate: AsyncParsableCommand {
     }
 
     // Do our actual install/removal tasks
-    private mutating func handleInstallTasks() async {
+    private mutating func handleInstallTasks(soloItemName: String = "") async {
         // Complex logic here to handle lots of install scenarios
         // and options
         if munkiUpdateCount == 0, appleUpdateCount == 0 {
@@ -382,9 +388,10 @@ struct ManagedSoftwareUpdate: AsyncParsableCommand {
         }
         if commonOptions.installOnly || otherOptions.logoutinstall {
             // admin has triggered install or MSC has triggered install,
-            // so just install everything
+            // so just install everything (or a solo item if soloItemName is set)
             restartAction = await doInstallTasks(
-                doAppleUpdates: appleUpdateCount > 0)
+                doAppleUpdates: appleUpdateCount > 0,
+                soloItemName: soloItemName)
             // reset our count of available updates (it might not actually
             // be zero, but we want to clear the badge on the Dock icon;
             // it can be updated to the "real" count on the next Munki run)
@@ -529,6 +536,11 @@ struct ManagedSoftwareUpdate: AsyncParsableCommand {
         try handleConfigOptions()
         try exitIfAnotherManagedSoftwareUpdateIsRunning()
         try processLaunchdOptions()
+        // --pkg overrides any SoloInstallItemName from trigger file
+        if !otherOptions.pkg.isEmpty {
+            soloInstallItemName = otherOptions.pkg
+            munkiLog("Reinstall requested via --pkg for item: \(soloInstallItemName)")
+        }
         try ensureMunkiDirsExist()
         configureDisplayOptions()
         await doCleanupTasks(runType: runtype)
@@ -567,6 +579,12 @@ struct ManagedSoftwareUpdate: AsyncParsableCommand {
             print("NOTE: managedsoftwareupdate is configured to process Apple Software Updates only.")
         }
 
+        // If --pkg is set, write to managed_reinstalls in SelfServeManifest so the
+        // updatecheck forces a download of the item even if it is already installed.
+        if !soloInstallItemName.isEmpty && !skipMunkiCheck {
+            addToSelfServeManagedReinstalls(soloInstallItemName)
+        }
+
         let updateCheckResult = try await doMunkiUpdateCheck(skipCheck: skipMunkiCheck)
         appleUpdateCount = doAppleUpdateCheckIfAppropriate(
             appleUpdatesOnly: appleupdatesonly)
@@ -589,7 +607,14 @@ struct ManagedSoftwareUpdate: AsyncParsableCommand {
         munkiUpdateCount = munkiUpdatesAvailable()
 
         reconfigureOptionsForInstall()
-        await handleInstallTasks()
+        await handleInstallTasks(soloItemName: soloInstallItemName)
+
+        // Clean up managed_reinstalls regardless of install success/failure,
+        // so a failed --pkg run doesn't cause unexpected reinstalls on the next
+        // scheduled managedsoftwareupdate run.
+        if !soloInstallItemName.isEmpty {
+            removeFromSelfServeReinstalls(soloInstallItemName)
+        }
 
         display.majorStatus("Finishing...")
         await doFinishingTasks(runtype: runtype)

@@ -108,6 +108,7 @@ class GenericItem: BaseItem {
             "display_version": display_version,
             "developer_sort": developer_sort,
             "more_link_text": more_link_text,
+            "reinstall_button": reinstall_button,
         ]
     }
     
@@ -342,11 +343,17 @@ class GenericItem: BaseItem {
                                   comment: "Update available text"),
             "unavailable":
                 NSLocalizedString("Unavailable",
-                                  comment: "Unavailable status text")
+                                  comment: "Unavailable status text"),
+            "reinstall-requested":
+                NSLocalizedString("Reinstall requested",
+                                  comment: "Reinstall Requested status text"),
+            "reinstalling":
+                NSLocalizedString("Reinstalling",
+                                  comment: "Reinstalling status text"),
         ]
         return text_for[status] ?? status
     }
-    
+
     func short_action_text() -> String {
         // Return localized 'short' action text for button
         let text_for = [
@@ -406,12 +413,18 @@ class GenericItem: BaseItem {
                                   comment: "Update button title/action text"),
             "unavailable":
                 NSLocalizedString("Unavailable",
-                                  comment: "Unavailable status text")
+                                  comment: "Unavailable status text"),
+            "reinstall-requested":
+                NSLocalizedString("Cancel",
+                                  comment: "Cancel button title/short action text"),
+            "reinstalling":
+                NSLocalizedString("Reinstalling",
+                                  comment: "Reinstalling status text"),
         ]
         let status = my["status"] as? String ?? ""
         return text_for[status] ?? status
     }
-    
+
     func long_action_text() -> String {
         // Return localized 'long' action text for button
         let text_for = [
@@ -471,12 +484,18 @@ class GenericItem: BaseItem {
                                   comment: "Update button title/action text"),
             "unavailable":
                 NSLocalizedString("Currently Unavailable",
-                                  comment: "Unavailable long action text")
+                                  comment: "Unavailable long action text"),
+            "reinstall-requested":
+                NSLocalizedString("Cancel reinstall",
+                                  comment: "Cancel Reinstall long action text"),
+            "reinstalling":
+                NSLocalizedString("Reinstalling",
+                                  comment: "Reinstalling status text"),
         ]
         let status = my["status"] as? String ?? ""
         return text_for[status] ?? status
     }
-    
+
     func myitem_action_text() -> String {
         let text_for = [
             "install-error":
@@ -530,11 +549,17 @@ class GenericItem: BaseItem {
             "must-be-installed":
                 NSLocalizedString("Required",
                                   comment: "Install Required action text"),
+            "reinstall-requested":
+                NSLocalizedString("Cancel reinstall",
+                                  comment: "Cancel Reinstall long action text"),
+            "reinstalling":
+                NSLocalizedString("Reinstalling",
+                                  comment: "Reinstalling status text"),
         ]
         let status = my["status"] as? String ?? ""
         return text_for[status] ?? status
     }
-    
+
     func version_label() -> String {
         // Text for the version label
         let status = my["status"] as? String ?? ""
@@ -574,7 +599,11 @@ class GenericItem: BaseItem {
     func more_link_text() -> String {
         return NSLocalizedString("More", comment: "More link text")
     }
-    
+
+    func reinstall_button() -> String {
+        return ""
+    }
+
     func _get_preferred_locale(_ available_locales: [String]) -> String {
         let language_codes = Bundle.preferredLocalizations(
             from: available_locales, forPreferences: nil)
@@ -808,7 +837,76 @@ class OptionalItem: GenericItem {
         }
         return ""
     }
-    
+
+    override func reinstall_button() -> String {
+        // Returns the full action button HTML for the My Items view.
+        // - installed: split button (Remove is primary; Reinstall in dropdown)
+        // - installed-not-removable: standalone Reinstall button
+        // - all other statuses (cancel-pending, queued, etc.): regular action button
+        let status = my["status"] as? String ?? ""
+        let nameQuoted = my["name_quoted"] as? String ?? ""
+        let nameEscaped = my["name_escaped"] as? String ?? ""
+
+        switch status {
+        case "installed":
+            let removeText = NSLocalizedString("Remove", comment: "Remove action text")
+            let reinstallText = NSLocalizedString("Reinstall", comment: "Reinstall action text")
+            return """
+                <li class="button">
+                    <div class="msc-split-button-wrapper">
+                        <div class="msc-split-button">
+                            <button class="split-main button-area"
+                                    onClick="window.webkit.messageHandlers.myItemsButtonClicked.postMessage('\(nameQuoted)');">
+                                \(removeText)
+                            </button>
+                            <button class="split-arrow button-area"
+                                    onClick="toggleSplitMenu('\(nameEscaped)_split_menu', this);">
+                                &#9662;
+                            </button>
+                        </div>
+                        <div class="split-menu" id="\(nameEscaped)_split_menu">
+                            <div class="split-menu-item"
+                                 onClick="closeSplitMenus(); window.webkit.messageHandlers.reinstallButtonClicked.postMessage('\(nameQuoted)');">
+                                \(reinstallText)
+                            </div>
+                        </div>
+                    </div>
+                </li>
+                """
+
+        case "installed-not-removable":
+            let reinstallText = NSLocalizedString("Reinstall", comment: "Reinstall action text")
+            return """
+                <li class="button">
+                    <div class="msc-button small">
+                        <button class="button-area uppercase"
+                                onClick="window.webkit.messageHandlers.reinstallButtonClicked.postMessage('\(nameQuoted)');">
+                            <div class="msc-button-inner installed">
+                                \(reinstallText)
+                            </div>
+                        </button>
+                    </div>
+                </li>
+                """
+
+        default:
+            let actionText = myitem_action_text()
+            guard !actionText.isEmpty else { return "" }
+            return """
+                <li class="button">
+                    <div class="msc-button small">
+                        <button class="button-area uppercase"
+                                onClick="window.webkit.messageHandlers.myItemsButtonClicked.postMessage('\(nameQuoted)');">
+                            <div class="msc-button-inner \(status)" id="\(nameEscaped)_action_button_text">
+                                \(actionText)
+                            </div>
+                        </button>
+                    </div>
+                </li>
+                """
+        }
+    }
+
     override func description() -> String {
         // return a full description for the item, inserting dynamic data
         // if needed
@@ -1391,9 +1489,10 @@ func getEffectiveUpdateList() -> [GenericItem] {
 }
 
 func getMyItemsList() -> [OptionalItem] {
-    // Returns a list of optional_installs items the user has chosen
-    // to install or to remove
     let self_service = SelfService()
+    let install_info = cachedInstallInfo()
+
+    // user-selected optional installs (items the user requested or is removing)
     let install_list = getOptionalInstallItems().filter(
         { self_service.installs.contains($0["name"] as? String ?? "") }
     )
@@ -1403,7 +1502,27 @@ func getMyItemsList() -> [OptionalItem] {
                 ($0["installed"] as? Bool ?? false))
         }
     )
-    return install_list + uninstall_list
+
+    // installed managed items (managed_install and managed_update) not in optional_installs
+    let optional_install_names = Set(
+        (install_info["optional_installs"] as? [PlistDict] ?? []).compactMap { $0["name"] as? String }
+    )
+    let managed_installs = install_info["managed_installs"] as? [PlistDict] ?? []
+
+    var managed_installed_items = [OptionalItem]()
+    for var item in managed_installs {
+        let name = item["name"] as? String ?? ""
+        let installed = item["installed"] as? Bool ?? false
+        // only include installed items that are not in optional_installs
+        // (to avoid duplicates — optional items have their own row via install_list)
+        guard installed, !optional_install_names.contains(name) else { continue }
+        // managed items (both managed_install and managed_update) cannot be removed
+        // via the optional installs flow, so show only Reinstall
+        item["status"] = "installed-not-removable"
+        managed_installed_items.append(OptionalItem(item))
+    }
+
+    return install_list + uninstall_list + managed_installed_items
 }
 
 func dependentItems(_ item_name: String) -> [String] {

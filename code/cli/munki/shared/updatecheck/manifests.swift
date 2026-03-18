@@ -281,6 +281,10 @@ func removeFromSelfServeUninstalls(_ itemName: String) {
     removeItemFromSelfServeSection(itemname: itemName, section: "managed_uninstalls")
 }
 
+func removeFromSelfServeReinstalls(_ itemName: String) {
+    removeItemFromSelfServeSection(itemname: itemName, section: "managed_reinstalls")
+}
+
 /// Processes keys in manifests to build the lists of items to install and
 /// remove.
 ///

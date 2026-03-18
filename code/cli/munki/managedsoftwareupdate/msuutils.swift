@@ -340,11 +340,12 @@ func doRestart(shutdown: Bool = false) {
 ///
 /// Args:
 ///    doAppleUpdates: Bool. If true, install Apple updates
-///    onlyUnattended:  Bool. If true, only do unattended_(un)install items.
+///    onlyUnattended: Bool. If true, only do unattended_(un)install items.
+///    soloItemName: String. If non-empty, install only the named item (case-insensitive).
 ///
 /// Returns:
 ///    PostAction - one of .none, .logout, .restart, .shutdown
-func doInstallTasks(doAppleUpdates: Bool = false, onlyUnattended: Bool = false) async -> PostAction {
+func doInstallTasks(doAppleUpdates: Bool = false, onlyUnattended: Bool = false, soloItemName: String = "") async -> PostAction {
     if !onlyUnattended {
         // first, clear the last notified date so we can get notified of new
         // changes after this round of installs
@@ -355,7 +356,7 @@ func doInstallTasks(doAppleUpdates: Bool = false, onlyUnattended: Bool = false) 
 
     if munkiUpdatesAvailable() > 0 {
         // install Munki updates
-        munkiItemsRestartAction = await doInstallsAndRemovals(onlyUnattended: onlyUnattended)
+        munkiItemsRestartAction = await doInstallsAndRemovals(onlyUnattended: onlyUnattended, soloItemName: soloItemName)
         if !onlyUnattended {
             if munkiUpdatesContainItemWithInstallerType("startosinstall") {
                 Report.shared.save()

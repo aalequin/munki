@@ -54,6 +54,8 @@ DEFAULT_INSECURE_REPO_URL = 'http://munki/repo'
 DEFAULT_PREFS = {
     'AdditionalHttpHeaders': None,
     'AggressiveUpdateNotificationDays': 14,
+    'AllowSoloInstall': False,
+    'AllowSoloInstallForAllManifestItems': False,
     'AppleSoftwareUpdatesIncludeMajorOSUpdates': False,
     'AppleSoftwareUpdatesOnly': False,
     'CatalogURL': None,

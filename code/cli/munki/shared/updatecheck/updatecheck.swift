@@ -208,6 +208,19 @@ func processSelfServeManifest(mainManifest: PlistDict, installInfo: inout PlistD
             )
         }
     }
+    if let reinstalls = selfServeManifest["managed_reinstalls"] as? [String],
+       !reinstalls.isEmpty
+    {
+        for item in reinstalls {
+            _ = await processInstall(
+                item,
+                catalogList: parentCatalogs,
+                installInfo: &installInfo,
+                isOptionalInstall: true,
+                forceReinstall: true
+            )
+        }
+    }
 
     // update optional_installs with install/removal info
     if var optionalInstalls = installInfo["optional_installs"] as? [PlistDict] {

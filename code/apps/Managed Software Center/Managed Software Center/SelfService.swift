@@ -35,11 +35,15 @@ enum SelfServiceError: Error {
 struct SelfService {
     var _installs: Set<String> = []
     var _uninstalls: Set<String> = []
+    var _reinstalls: Set<String> = []
     var installs: [String] {
         return Array(_installs)
     }
     var uninstalls: [String] {
         return Array(_uninstalls)
+    }
+    var reinstalls: [String] {
+        return Array(_reinstalls)
     }
 
     init() {
@@ -48,30 +52,43 @@ struct SelfService {
             selfServiceData["managed_installs"] as? [String] ?? [String]())
         _uninstalls = Set(
             selfServiceData["managed_uninstalls"] as? [String] ?? [String]())
+        _reinstalls = Set(
+            selfServiceData["managed_reinstalls"] as? [String] ?? [String]())
     }
-    
+
     mutating func subscribe(_ item_name: String) -> Bool {
         _installs.insert(item_name)
         _uninstalls.remove(item_name)
         return save_self_service_choices()
     }
-    
+
     mutating func unsubscribe(_ item_name: String) -> Bool {
         _installs.remove(item_name)
         _uninstalls.insert(item_name)
         return save_self_service_choices()
     }
-    
+
     mutating func unmanage(_ item_name: String) -> Bool {
         _installs.remove(item_name)
         _uninstalls.remove(item_name)
         return save_self_service_choices()
     }
-    
+
+    mutating func requestReinstall(_ item_name: String) -> Bool {
+        _reinstalls.insert(item_name)
+        return save_self_service_choices()
+    }
+
+    mutating func cancelReinstall(_ item_name: String) -> Bool {
+        _reinstalls.remove(item_name)
+        return save_self_service_choices()
+    }
+
     func save_self_service_choices() -> Bool {
         var current_choices = PlistDict()
         current_choices["managed_installs"] = installs
         current_choices["managed_uninstalls"] = uninstalls
+        current_choices["managed_reinstalls"] = reinstalls
         return writeSelfServiceManifest(current_choices)
     }
 }
@@ -79,7 +96,8 @@ struct SelfService {
 extension SelfService: Equatable {
     static func == (lhs: SelfService, rhs: SelfService) -> Bool {
         return (lhs._installs == rhs._installs &&
-                lhs._uninstalls == rhs._uninstalls)
+                lhs._uninstalls == rhs._uninstalls &&
+                lhs._reinstalls == rhs._reinstalls)
     }
 }
 
@@ -121,6 +139,22 @@ func unmanage(_ item: OptionalItem) -> Bool {
             user_removal_selections.remove(item_name)
             return true
         }
+    }
+    return false
+}
+
+func requestReinstall(_ item: OptionalItem) -> Bool {
+    if let item_name = item["name"] as? String {
+        var self_service = SelfService()
+        return self_service.requestReinstall(item_name)
+    }
+    return false
+}
+
+func cancelReinstall(_ item: OptionalItem) -> Bool {
+    if let item_name = item["name"] as? String {
+        var self_service = SelfService()
+        return self_service.cancelReinstall(item_name)
     }
     return false
 }
